@@ -99,8 +99,27 @@ export function createConn(client, options = {}) {
 
   /** Caché de mensajes enviados para resolver reacciones, ediciones y borrados. */
   const sentCache = new Map();
+
+  /**
+   * Guarda el mensaje y le añade una `key` con forma de Baileys.
+   *
+   * Muchos plugins hacen `const enviado = await conn.sendMessage(...)` y
+   * después leen `enviado.key.id` (por ejemplo, los de descarga, para
+   * asociar los botones a la respuesta). Sin esta `key` reventaban con
+   * «Cannot read properties of undefined (reading 'id')».
+   */
   const rememberMessage = (message) => {
     if (!message?.id) return message;
+
+    if (!message.key) {
+      message.key = {
+        id: message.id,
+        remoteJid: channelJid(message.channel),
+        fromMe: true,
+        participant: userToJid(client.user?.id || "0")
+      };
+    }
+
     sentCache.set(message.id, message);
     if (sentCache.size > 3000) {
       const oldest = sentCache.keys().next().value;
@@ -170,13 +189,19 @@ export function createConn(client, options = {}) {
     const rendered = renderMentions(text);
     const parts = chunkText(rendered);
     let last = null;
+    let anchor = null;
+
     for (let i = 0; i < parts.length; i++) {
       const body = { content: parts[i] || "​" };
-      // Sólo el primer trozo lleva reply y componentes.
+      // Sólo el primer trozo lleva la cita y los componentes.
       if (i === 0) Object.assign(body, payload);
       last = rememberMessage(await channel.send(body));
+      if (i === 0) anchor = last;
     }
-    return last;
+
+    // Si hay botones, devolvemos el mensaje que los lleva: es el que los
+    // plugins guardan para reconocer después la interacción del usuario.
+    return payload.components?.length ? anchor : last;
   }
 
   /** Adjunta un archivo aplicando límites, compresión y enlace de respaldo. */
@@ -196,23 +221,44 @@ export function createConn(client, options = {}) {
       }
 
       const attachment = new AttachmentBuilder(prepared.file, { name: prepared.name });
-      const body = { files: [attachment], ...payload };
 
-      if (caption) {
-        const rendered = renderMentions(caption);
-        if (rendered.length <= LIMITS.MESSAGE) body.content = rendered;
-      }
+      // 📌 El medio va SIEMPRE en su propio mensaje y va primero.
+      // Discord dibuja el texto por encima del adjunto, así que incluir el
+      // caption aquí dejaría la imagen o el vídeo debajo del texto. Los
+      // menús y las descargas se ven mucho mejor con el medio arriba.
+      const { components, ...mediaPayload } = payload;
+      const mediaMsg = rememberMessage(await channel.send({
+        files: [attachment],
+        ...mediaPayload
+      }));
 
+      const notes = [];
+      if (caption) notes.push(caption);
       if (prepared.compressed) {
-        const note = "♻️ Archivo recomprimido para ajustarse al límite de Discord.";
-        body.content = body.content ? `${body.content}\n${note}` : note;
+        notes.push("♻️ Archivo recomprimido para ajustarse al límite de Discord.");
       }
 
-      const sent = rememberMessage(await channel.send(body));
+      // El texto (y los botones, si los hay) van justo debajo del medio.
+      // Se quita el `reply` para no repetir la cita dos veces.
+      if (notes.length) {
+        const { reply, ...rest } = payload;
+        const textMsg = await sendText(channel, notes.join("\n\n"), rest);
+        // Los plugins interactivos guardan el mensaje devuelto para
+        // reconocer la pulsación: debe ser el que lleva los botones.
+        if (components?.length && textMsg) return textMsg;
+        return mediaMsg;
+      }
 
-      // Si el caption no cabía en el mensaje del archivo, va aparte.
-      if (caption && !body.content) await sendText(channel, caption);
-      return sent;
+      // Sin texto: los botones van en un mensaje aparte, que pasa a ser el
+      // ancla de la interacción.
+      if (components?.length) {
+        const btnMsg = await channel.send({ content: "​", components })
+          .then(rememberMessage)
+          .catch(() => null);
+        if (btnMsg) return btnMsg;
+      }
+
+      return mediaMsg;
     } catch (error) {
       console.error("⚠️ Error enviando adjunto:", error?.message || error);
       const note = "⚠️ No se pudo enviar el archivo. Intenta de nuevo en unos segundos.";
