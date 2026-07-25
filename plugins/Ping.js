@@ -1,58 +1,35 @@
-// plugins/ping.js — Ping optimizado (sin reacciones: cada una era un viaje
-// de red extra que retrasaba la respuesta).
-// Compatible con Baileys ESM/CJS: NO importes '@whiskeysockets/baileys' aquí.
+// plugins/Ping.js — Latencia del bot.
+// En WhatsApp había que editar el mensaje vía `relayMessage` + proto;
+// en Discord la edición es nativa, así que medimos el viaje real de la API
+// y además mostramos la latencia del WebSocket.
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-// obtiene el módulo de Baileys para acceder a `proto`
-function ensureWA(wa, conn) {
-  if (wa && wa.proto) return wa;
-  if (conn && conn.wa && conn.wa.proto) return conn.wa;
-  if (global.wa && global.wa.proto) return global.wa;
-  return null;
-}
-
-const handler = async (msg, { conn, wa }) => {
+const handler = async (msg, { conn }) => {
   const chatId = msg.key.remoteJid;
-  const isGroup = chatId.endsWith("@g.us");
 
   try {
     const start = Date.now();
     const sent = await conn.sendMessage(chatId, { text: "🏓 Pong..." }, { quoted: msg });
-    const ping = Date.now() - start;
-    const resultText = `🏓 Pong\n\n✅ Ping: ${ping} ms`;
+    const roundtrip = Date.now() - start;
+    const gateway = Math.max(0, Math.round(conn.client?.ws?.ping ?? 0));
 
-    const WA = ensureWA(wa, conn);
-    const proto = WA?.proto;
+    const uptime = process.uptime();
+    const hours = Math.floor(uptime / 3600);
+    const minutes = Math.floor((uptime % 3600) / 60);
+    const seconds = Math.floor(uptime % 60);
 
-    if (isGroup && proto) {
-      await sleep(100);
-      try {
-        await conn.relayMessage(
-          chatId,
-          {
-            protocolMessage: {
-              key: sent.key,
-              type: 14, // edit
-              editedMessage: proto.Message.fromObject({
-                conversation: resultText
-              })
-            }
-          },
-          { messageId: sent.key.id }
-        );
-      } catch {
-        // si falla la edición, enviamos un nuevo mensaje
-        await conn.sendMessage(chatId, { text: resultText }, { quoted: msg });
-      }
+    const text =
+      `🏓 *Pong*\n\n` +
+      `⚡ Respuesta: *${roundtrip} ms*\n` +
+      `📡 Gateway: *${gateway} ms*\n` +
+      `⏱️ Activo: *${hours}h ${minutes}m ${seconds}s*`;
+
+    if (sent?.editable) {
+      await sent.edit({ content: text }).catch(() => null);
     } else {
-      // en PV o si no hay proto, solo enviamos el resultado
-      await conn.sendMessage(chatId, { text: resultText }, { quoted: msg });
+      await conn.sendMessage(chatId, { text }, { quoted: msg });
     }
   } catch (e) {
-    console.error("Error en ping:", e);
+    console.error("Error en ping:", e?.message);
     await conn.sendMessage(chatId, { text: "❌ Error calculando el ping." }, { quoted: msg }).catch(() => {});
   }
 };

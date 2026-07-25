@@ -1,10 +1,9 @@
 node_modules/
 package-lock.json
-sessions/
+.env
 tmp/*
 !tmp/.gitkeep
 *.log
 .DS_Store
 activoss.json
-subbots/
-subplugins/tmp/
+sessions/

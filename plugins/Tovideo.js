@@ -53,10 +53,10 @@ function getQuotedSticker(msg) {
 async function getDownloader(wa) {
   if (wa && typeof wa.downloadContentFromMessage === "function") return wa.downloadContentFromMessage;
   try {
-    const m = await import("@whiskeysockets/baileys");
+    const m = await import("../libs/wa-compat.js");
     return m.downloadContentFromMessage;
   } catch {
-    throw new Error("No encontré downloader de Baileys. Pasa `wa` al handler o instala @whiskeysockets/baileys.");
+    throw new Error("No encontré downloader de Baileys. Pasa `wa` al handler o instala ../libs/wa-compat.js.");
   }
 }
 

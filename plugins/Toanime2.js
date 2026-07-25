@@ -1,6 +1,6 @@
 import axios from 'axios';
 import FormData from 'form-data';
-import { downloadContentFromMessage } from '@whiskeysockets/baileys';
+import { downloadContentFromMessage } from '../libs/wa-compat.js';
 
 const handler = async (msg, { conn }) => {
   const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
