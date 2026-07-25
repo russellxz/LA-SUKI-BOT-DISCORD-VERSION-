@@ -564,6 +564,21 @@ export function createConn(client, options = {}) {
       return conn.sendMessage(jid, { edit: message.protocolMessage.key, text });
     },
 
+    /** Estado / actividad del bot (antes era el «info» de WhatsApp). */
+    async updateProfileStatus(text) {
+      client.user.setActivity(String(text).slice(0, 128));
+      return true;
+    },
+
+    /**
+     * Solicitudes de entrada. Discord no expone una cola de peticiones por
+     * canal como WhatsApp; el equivalente es el filtro de acceso del
+     * servidor. Se mantienen como operaciones seguras para que los plugins
+     * que las invocan no rompan.
+     */
+    async groupRequestApprove() { return []; },
+    async groupRequestReject() { return []; },
+
     /**
      * En WhatsApp resolvía los identificadores ocultos (@lid). Discord no
      * tiene ese problema: los IDs ya son definitivos, así que devolvemos la
@@ -584,6 +599,19 @@ export function createConn(client, options = {}) {
     resolveMessage,
     getUploadLimit: (guild) => getUploadLimit(guild)
   };
+
+  /**
+   * 📦 `conn.wa` — muchos plugins (guardar multimedia, tourl, stickers…)
+   * buscaban aquí el módulo de Baileys para descargar adjuntos. Les damos
+   * el mismo objeto con la misma firma, ahora servido desde el CDN de
+   * Discord. También se expone en `global.wa`, que es el otro sitio donde
+   * lo buscan.
+   */
+  conn.wa = {
+    downloadContentFromMessage: conn.downloadContentFromMessage,
+    proto: null
+  };
+  global.wa = conn.wa;
 
   return conn;
 }
