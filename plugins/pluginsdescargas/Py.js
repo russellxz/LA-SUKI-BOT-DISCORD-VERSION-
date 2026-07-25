@@ -116,7 +116,7 @@ const handler = async (msg, { conn, args, usedPrefix, command }) => {
       await react(conn, msg, '❌');
       return conn.sendMessage(
         jid,
-        { text: `*[❌]* El video es demasiado grande (${sizeMB} MB).\n⚠️ WhatsApp tiene un límite de ~100 MB.` },
+        { text: `*[❌]* El video es demasiado grande (${sizeMB} MB).\n⚠️ Discord permite hasta 10 MB (100 MB si el servidor tiene boosts nivel 3).` },
         { quoted: msg }
       );
     }

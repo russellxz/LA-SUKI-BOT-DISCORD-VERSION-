@@ -39,7 +39,7 @@ const handler = async (msg, { conn, wa }) => {
 
   if (!q || !q.videoMessage) {
     return conn.sendMessage(chatId, {
-      text: `✳️ *Uso incorrecto.*\n📌 Responde a un *video* con *${pref}ff* para optimizarlo para WhatsApp.`
+      text: `✳️ *Uso incorrecto.*\n📌 Responde a un *video* con *${pref}ff* para optimizarlo para Discord.`
     }, { quoted: msg });
   }
 
@@ -94,7 +94,7 @@ const handler = async (msg, { conn, wa }) => {
       video: fs.readFileSync(finalPath),
       mimetype: 'video/mp4',
       fileName: 'video_optimo.mp4',
-      caption: `✅ *Video optimizado correctamente para WhatsApp*\n⏱️ *Conversión realizada en:* ${endTime}s\n\n🎬 *Procesado por La Suki Bot*`
+      caption: `✅ *Video optimizado correctamente para Discord*\n⏱️ *Conversión realizada en:* ${endTime}s\n\n🎬 *Procesado por La Suki Bot*`
     }, { quoted: msg });
 
     sentReact = '✅';

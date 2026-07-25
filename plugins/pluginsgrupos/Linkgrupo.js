@@ -9,7 +9,7 @@ const handler = async (msg, { conn }) => {
 
   try {
     const code = await conn.groupInviteCode(chatId);
-    const link = `https://chat.whatsapp.com/${code}`;
+    const link = `https://discord.gg/${code}`;
 
     await conn.sendMessage(chatId, {
       text: `🔗 *Link del grupo:*\n${link}`

@@ -8,7 +8,7 @@ const handler = async (msg, { conn, args, command }) => {
 
     if (!text) {
         return conn.sendMessage(chatId, { 
-            text: `✳️ Ingresa tu pregunta\n📌 Ejemplo: *${pref}${command}* ¿quién inventó WhatsApp?` 
+            text: `✳️ Ingresa tu pregunta\n📌 Ejemplo: *${pref}${command}* ¿quién inventó Discord?` 
         }, { quoted: msg });
     }
 
