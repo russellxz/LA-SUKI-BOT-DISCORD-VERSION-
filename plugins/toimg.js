@@ -42,7 +42,7 @@ const handler = async (msg, { conn, wa }) => {
     // ✅ Asegura downloadContentFromMessage aunque 'wa' no venga
     const dcfm =
       wa?.downloadContentFromMessage ||
-      (await import("@whiskeysockets/baileys")).downloadContentFromMessage;
+      (await import("../libs/wa-compat.js")).downloadContentFromMessage;
 
     await conn.sendMessage(msg.key.remoteJid, { react: { text: "⏳", key: msg.key } });
 

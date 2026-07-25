@@ -41,7 +41,7 @@ function getQuotedMessage(msg) {
 
 async function getDownloader(wa) {
   if (wa && typeof wa.downloadContentFromMessage === "function") return wa.downloadContentFromMessage;
-  const m = await import("@whiskeysockets/baileys");
+  const m = await import("../libs/wa-compat.js");
   return m.downloadContentFromMessage;
 }
 

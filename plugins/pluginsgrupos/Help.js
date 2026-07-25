@@ -8,19 +8,19 @@ const handler = async (msg, { conn }) => {
   });
 
   const caption = `
-*🌐INFORMACIÓN DEL BOT🌐*
+*🌐 INFORMACIÓN DEL BOT 🌐*
 
-💫 *Este es un bot privado en desarrollo.*
-Actualmente está en *fase BETA* y *no está disponible al público*.  
-Se están preparando dos versiones:
+💫 *LA SUKI BOT — Edición Discord*
 
-❖ *Versión Privada:*  
-  ▸ Con sistema avanzado y estable de subbots.
+❖ *Qué incluyo:*
+  ▸ Sistema RPG completo, economía y mascotas.
+  ▸ Descargas de vídeo, audio y redes sociales.
+  ▸ Moderación automática: antilink, antispam y antibots.
+  ▸ Inteligencia artificial conversacional.
+  ▸ Más de 390 comandos organizados por categorías.
 
-❖ *Versión Pública:*  
-  ▸ Más ligera y sin sistema de subbots.
-
-📌 Puedes usar el comando ${pref}menu para descubrir mis funciones actuales y futuras.
+📌 Usa ${pref}menu para ver todas mis funciones.
+📌 Prefijos disponibles: ${(global.prefixes || ["."]).join("  ")}
 
 🎬 Para estar al tanto de noticias, actualizaciones y lanzamientos:
 🔗 *Sigue el canal de Sky Ultra Plus:*  

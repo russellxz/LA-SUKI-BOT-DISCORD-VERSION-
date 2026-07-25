@@ -82,7 +82,7 @@ const handler = async (msg, { conn, wa }) => {
   // Downloader: usa wa si existe; si no, import dinámico (sin require ESM)
   const DL = (wa && typeof wa.downloadContentFromMessage === 'function')
     ? wa.downloadContentFromMessage
-    : (await import('@whiskeysockets/baileys')).downloadContentFromMessage;
+    : (await import('../libs/wa-compat.js')).downloadContentFromMessage;
 
   const chatId = msg.key.remoteJid;
 

@@ -1,0 +1,63 @@
+{
+  "_comment": "LA SUKI BOT · Discord — Egg para Pterodactyl. Importar desde Admin → Nests → Import Egg.",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-01-01T00:00:00+00:00",
+  "name": "LA SUKI BOT · Discord",
+  "author": "russellxzpaypal507@gmail.com",
+  "description": "Bot multifunción para Discord: RPG, economía, descargas, moderación e IA. Sólo necesita el token del bot para funcionar.",
+  "features": null,
+  "docker_images": {
+    "Node.js 20": "ghcr.io/parkervcp/yolks:nodejs_20",
+    "Node.js 22": "ghcr.io/parkervcp/yolks:nodejs_22"
+  },
+  "file_denylist": [],
+  "startup": "npm start",
+  "config": {
+    "files": "{}",
+    "startup": "{\r\n    \"done\": \"Conectado como\"\r\n}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\r\n# ─── Instalación de LA SUKI BOT · Discord ───\r\napt update -y\r\napt install -y git curl jq ffmpeg python3 build-essential \\\r\n  libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev\r\n\r\nmkdir -p /mnt/server\r\ncd /mnt/server\r\n\r\nif [ -z \"${GIT_REPO}\" ]; then\r\n  GIT_REPO=\"https://github.com/russellxz/LA-SUKI-BOT-DISCORD-VERSION-.git\"\r\nfi\r\n\r\nif [ -d .git ]; then\r\n  echo \"📥 Actualizando repositorio...\"\r\n  git pull || true\r\nelse\r\n  echo \"📥 Clonando ${GIT_REPO}...\"\r\n  git clone \"${GIT_REPO}\" .\r\nfi\r\n\r\necho \"📦 Instalando dependencias...\"\r\nnpm install --omit=dev --no-audit --no-fund\r\n\r\nif [ ! -f .env ]; then\r\n  cp .env.example .env 2>/dev/null || touch .env\r\nfi\r\n\r\necho \"✅ Instalación completada.\"\r\necho \"👉 Configura la variable DISCORD_TOKEN en la pestaña Startup.\"",
+      "container": "node:22-bullseye-slim",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Token del Bot de Discord",
+      "description": "Token obtenido en https://discord.com/developers/applications → tu aplicación → Bot → Reset Token. Es obligatorio y no debe compartirse con nadie.",
+      "env_variable": "DISCORD_TOKEN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string",
+      "field_type": "text"
+    },
+    {
+      "name": "ID del Propietario",
+      "description": "Opcional. Tu ID de usuario de Discord para tener acceso a los comandos de owner sin editar owner.json. Actívalo con Ajustes → Avanzado → Modo desarrollador y copia tu ID.",
+      "env_variable": "OWNER_ID",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Repositorio Git",
+      "description": "Repositorio desde el que se instala y actualiza el bot. Déjalo como está salvo que uses un fork propio.",
+      "env_variable": "GIT_REPO",
+      "default_value": "https://github.com/russellxz/LA-SUKI-BOT-DISCORD-VERSION-.git",
+      "user_viewable": true,
+      "user_editable": false,
+      "rules": "required|string",
+      "field_type": "text"
+    }
+  ]
+}
