@@ -1,126 +1,102 @@
-// Adaptado a tu bot (CommonJS + conn.sendMessage)
-import fetch from 'node-fetch';
+// plugins/R.js — Reacciones múltiples sobre un mensaje.
+//
+// En WhatsApp este comando reaccionaba a una publicación de un canal
+// llamando a una API externa. Discord no tiene canales de difusión con ese
+// modelo, pero sí conserva la utilidad: aplicar varias reacciones de golpe
+// a un mensaje concreto. Se admite un enlace de mensaje o responder a él.
+
+const LINK = /https?:\/\/(?:\w+\.)?discord(?:app)?\.com\/channels\/(\d+|@me)\/(\d+)\/(\d+)/i;
 
 const handler = async (msg, { conn, text, args }) => {
   const chatId = msg.key.remoteJid;
   const raw = (text && text.trim()) || (args || []).join(" ").trim();
+  const quoted = msg._discord?.quoted;
 
-  if (!raw) {
-    return conn.sendMessage(
-      chatId,
-      {
-        text:
-          "👻 Uso: .react <link_post> <emoji1,emoji2,emoji3,emoji4>\n\n" +
-          "Ejemplo:\n.rc https://whatsapp.com/channel/0029Vb6D6ogBVJl60Yr8YL31/473 😨,🤣,👾,😳",
-      },
-      { quoted: msg }
-    );
+  if (!raw && !quoted) {
+    return conn.sendMessage(chatId, {
+      text:
+        "👻 *Reacciones múltiples*\n\n" +
+        "📌 *Uso:*\n" +
+        "  • Responde a un mensaje:  `.rc 😨,🤣,👾,😳`\n" +
+        "  • O pega el enlace:  `.rc <enlace_del_mensaje> 😨,🤣`\n\n" +
+        "💡 Copia el enlace con: clic derecho sobre el mensaje → *Copiar enlace del mensaje*\n" +
+        "🔢 Máximo 10 reacciones (límite de Discord por mensaje)."
+    }, { quoted: msg });
   }
 
-  // reacción de “procesando…”
   await conn.sendMessage(chatId, { react: { text: "⏳", key: msg.key } });
 
   try {
-    // separa "<link> <emojis...>"
-    const sp = raw.indexOf(" ");
-    const postLink = sp === -1 ? raw : raw.slice(0, sp).trim();
-    const reactsStr = sp === -1 ? "" : raw.slice(sp + 1).trim();
+    // 1. Localizar el mensaje objetivo: por enlace o por respuesta.
+    let target = null;
+    let emojiPart = raw;
 
-    if (!postLink || !reactsStr) {
-      await conn.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-      return conn.sendMessage(
-        chatId,
-        { text: "⚠️ Formato incorrecto.\n\nUso: .rc <link_post> <emoji1,emoji2,emoji3,emoji4>" },
-        { quoted: msg }
-      );
+    const match = raw.match(LINK);
+    if (match) {
+      const [, , channelId, messageId] = match;
+      const channel = await conn.client.channels.fetch(channelId).catch(() => null);
+      target = await channel?.messages?.fetch(messageId).catch(() => null);
+      emojiPart = raw.replace(match[0], "").trim();
+    } else if (quoted) {
+      target = quoted;
     }
 
-    if (!/whatsapp\.com\/channel\//i.test(postLink)) {
+    if (!target) {
       await conn.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-      return conn.sendMessage(
-        chatId,
-        { text: "🚫 El link debe ser de una publicación de *canal de WhatsApp*." },
-        { quoted: msg }
-      );
+      return conn.sendMessage(chatId, {
+        text: "🚫 No encontré ese mensaje. Responde al mensaje o comprueba que el enlace sea correcto y que yo tenga acceso a ese canal."
+      }, { quoted: msg });
     }
 
-    // permite coma normal y coma china
-    const emojiArray = reactsStr
-      .split(/[,，]/)
+    // 2. Separar los emojis (coma normal, coma china o espacios).
+    const emojis = emojiPart
+      .split(/[,，\s]+/)
       .map((e) => e.trim())
       .filter(Boolean);
 
-    if (emojiArray.length === 0) {
+    if (!emojis.length) {
       await conn.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-      return conn.sendMessage(
-        chatId,
-        { text: "⚠️ Debes indicar al menos 1 emoji." },
-        { quoted: msg }
-      );
+      return conn.sendMessage(chatId, {
+        text: "⚠️ Debes indicar al menos 1 emoji.\n\nEjemplo: `.rc 😨,🤣,👾`"
+      }, { quoted: msg });
     }
 
-    if (emojiArray.length > 4) {
-      await conn.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-      return conn.sendMessage(
-        chatId,
-        { text: "❗ Máximo 4 emojis permitidos." },
-        { quoted: msg }
-      );
-    }
+    // Discord permite como mucho 20 reacciones distintas por mensaje;
+    // nos quedamos en 10 para no agotar el límite de peticiones.
+    const lista = emojis.slice(0, 10);
 
-    // usa variable de entorno si la tienes; si no, reemplaza el placeholder
-    const apiKey = process.env.REACT_API_KEY || "42699f4385a23f089abfd6948dd6ff366db8aef340eab58f69839b885b8b5e75";
+    // 3. Aplicarlas una a una, respetando el ritmo de la API.
+    const ok = [];
+    const fallidos = [];
 
-    const requestData = {
-      post_link: postLink,
-      reacts: emojiArray.join(","),
-    };
-
-    const response = await fetch(
-      "https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/channel/react-to-post",
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json, text/plain, */*",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "User-Agent":
-            "Mozilla/5.0 (Android 13; Mobile; rv:146.0) Gecko/146.0 Firefox/146.0",
-          Referer: "https://asitha.top/channel-manager",
-        },
-        body: JSON.stringify(requestData),
+    for (const emoji of lista) {
+      try {
+        await target.react(emoji);
+        ok.push(emoji);
+        await new Promise((r) => setTimeout(r, 300));
+      } catch {
+        fallidos.push(emoji);
       }
-    );
-
-    const result = await response.json().catch(() => ({}));
-
-    if (response.ok && (result?.message || result?.success)) {
-      await conn.sendMessage(chatId, { react: { text: "✅", key: msg.key } });
-      await conn.sendMessage(
-        chatId,
-        { text: "✅ Reacciones enviadas con éxito 👻" },
-        { quoted: msg }
-      );
-    } else {
-      await conn.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-      await conn.sendMessage(
-        chatId,
-        {
-          text:
-            "❌ Error al enviar las reacciones.\n" +
-            (result?.error || result?.message || ""),
-        },
-        { quoted: msg }
-      );
     }
-  } catch (err) {
-    console.error("[react] Error:", err);
+
+    await conn.sendMessage(chatId, { react: { text: ok.length ? "✅" : "❌", key: msg.key } });
+
+    let resumen = ok.length
+      ? `✅ *${ok.length} reacción(es) aplicadas:* ${ok.join(" ")}`
+      : "❌ No se pudo aplicar ninguna reacción.";
+
+    if (fallidos.length) {
+      resumen += `\n\n⚠️ *No válidas:* ${fallidos.join(" ")}\n` +
+                 `_Los emojis personalizados sólo funcionan si soy miembro del servidor que los tiene._`;
+    }
+
+    return conn.sendMessage(chatId, { text: resumen }, { quoted: msg });
+  } catch (e) {
+    console.error("❌ Error en reacciones múltiples:", e?.message);
     await conn.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-    await conn.sendMessage(
-      chatId,
-      { text: "⚠️ Ocurrió un error al procesar la solicitud." },
-      { quoted: msg }
-    );
+    return conn.sendMessage(chatId, {
+      text: "❌ Ocurrió un error aplicando las reacciones."
+    }, { quoted: msg });
   }
 };
 

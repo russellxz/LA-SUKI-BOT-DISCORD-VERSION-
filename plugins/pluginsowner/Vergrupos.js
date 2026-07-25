@@ -50,7 +50,7 @@ const handler = async (msg, { conn }) => {
     let link = "🔒 No soy admin";
     try {
       const code = await conn.groupInviteCode(id);
-      link = `https://chat.whatsapp.com/${code}`;
+      link = `https://discord.gg/${code}`;
     } catch {}
 
     resultLines.push(`╭───────────────

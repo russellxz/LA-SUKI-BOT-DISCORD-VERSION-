@@ -336,7 +336,7 @@ const handler = async (msg, { conn, args }) => {
 ${lista}`;
 
   if (failed.length) {
-    texto += `\n\n⚠️ No pude eliminar a *${failed.length}* usuario(s). Puede que sean admins, ya no estén en el grupo o WhatsApp rechazó el JID.`;
+    texto += `\n\n⚠️ No pude eliminar a *${failed.length}* usuario(s). Puede que sean admins, ya no estén en el servidor o su rol esté por encima del mío.`;
   }
 
   return conn.sendMessage(chatId, {
