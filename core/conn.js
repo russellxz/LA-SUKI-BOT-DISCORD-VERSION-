@@ -19,7 +19,9 @@ import {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder
 } from "discord.js";
 import { EventEmitter } from "events";
 import fs from "fs";
@@ -153,9 +155,79 @@ export function createConn(client, options = {}) {
       || await target.messages.fetch(key.id).catch(() => null);
   }
 
+  /** Recorta respetando el máximo de caracteres de Discord. */
+  const clip = (value, max, fallback = "") => {
+    const text = String(value ?? "").trim() || fallback;
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  };
+
   /**
-   * Traduce los botones nativos de WhatsApp que usan los plugins de descarga
-   * a componentes reales de Discord, respetando 5 botones por fila.
+   * Convierte las listas de WhatsApp (`sections` → `rows`) en menús
+   * desplegables de Discord.
+   *
+   * En WhatsApp esto era un único botón que abría una lista con secciones.
+   * Discord no tiene ese componente, pero sí los *select menu*, que son el
+   * equivalente natural: cada sección se convierte en su propio desplegable,
+   * conservando el agrupado visual y las descripciones de cada opción.
+   *
+   * Límites aplicados: 25 opciones por menú, 5 filas por mensaje,
+   * 100 caracteres en etiqueta, descripción y valor.
+   */
+  function buildSelectMenus(entries) {
+    const rows = [];
+
+    for (const entry of entries) {
+      const sections = Array.isArray(entry?.sections) ? entry.sections : [];
+
+      for (const section of sections) {
+        const items = Array.isArray(section?.rows) ? section.rows : [];
+        if (!items.length) continue;
+
+        // Si una sección supera las 25 opciones, se parte en varios menús.
+        for (let start = 0; start < items.length; start += LIMITS.SELECT_OPTIONS) {
+          if (rows.length >= LIMITS.ROWS_PER_MESSAGE) return rows;
+
+          const trozo = items.slice(start, start + LIMITS.SELECT_OPTIONS);
+          const seen = new Set();
+          const options = [];
+
+          for (const [i, item] of trozo.entries()) {
+            // Discord exige valores únicos dentro del mismo menú.
+            let value = clip(item?.id ?? item?.rowId ?? `row_${i}`, 100, `row_${i}`);
+            while (seen.has(value)) value = `${value}_${i}`;
+            seen.add(value);
+
+            const option = new StringSelectMenuOptionBuilder()
+              .setLabel(clip(item?.title ?? item?.header, 100, `Opción ${i + 1}`))
+              .setValue(value);
+
+            const description = clip(item?.description, 100);
+            if (description) option.setDescription(description);
+
+            options.push(option);
+          }
+
+          if (!options.length) continue;
+
+          const etiqueta = clip(section?.title ?? entry?.text, 150, "Elige una opción");
+          const menu = new StringSelectMenuBuilder()
+            // El id identifica el menú; la opción elegida viaja en `values`.
+            .setCustomId(`suki_list_${rows.length}_${Date.now()}`)
+            .setPlaceholder(clip(etiqueta, 150, "Elige una opción"))
+            .addOptions(options);
+
+          rows.push(new ActionRowBuilder().addComponents(menu));
+        }
+      }
+    }
+
+    return rows;
+  }
+
+  /**
+   * Traduce los botones nativos de WhatsApp a componentes de Discord.
+   * Si el contenido trae `sections`, se genera un menú desplegable;
+   * en caso contrario, botones normales (5 por fila).
    */
   function buildComponents(content) {
     const raw = content.buttons
@@ -164,16 +236,22 @@ export function createConn(client, options = {}) {
       || null;
     if (!Array.isArray(raw) || !raw.length) return [];
 
+    // ¿Es una lista con secciones? → menús desplegables.
+    if (raw.some((b) => Array.isArray(b?.sections) && b.sections.length)) {
+      const menus = buildSelectMenus(raw);
+      if (menus.length) return menus;
+    }
+
     const buttons = raw.slice(0, LIMITS.BUTTONS_PER_ROW * LIMITS.ROWS_PER_MESSAGE).map((b, i) => {
-      const id = String(
-        b.buttonId ?? b.id ?? b.name ?? `btn_${i}`
-      ).slice(0, 100);
-      const label = String(
-        b.buttonText?.displayText ?? b.displayText ?? b.text ?? b.title ?? `Opción ${i + 1}`
-      ).slice(0, 80);
+      const id = clip(b.buttonId ?? b.id ?? b.name, 100, `btn_${i}`);
+      const label = clip(
+        b.buttonText?.displayText ?? b.displayText ?? b.text ?? b.title,
+        80,
+        `Opción ${i + 1}`
+      );
       return new ButtonBuilder()
-        .setCustomId(id || `btn_${i}`)
-        .setLabel(label || `Opción ${i + 1}`)
+        .setCustomId(id)
+        .setLabel(label)
         .setStyle(ButtonStyle.Secondary);
     });
 

@@ -278,28 +278,58 @@ client.on("messageDelete", (message) => handleDeletedMessage(conn, message));
  */
 client.on("interactionCreate", async (interaction) => {
   try {
-    if (!interaction.isButton()) return;
+    const esBoton = interaction.isButton?.();
+    const esMenu = interaction.isStringSelectMenu?.();
+    if (!esBoton && !esMenu) return;
+
+    // Confirmamos la interacción de inmediato: Discord sólo da 3 segundos
+    // antes de marcarla como fallida, y la descarga tarda bastante más.
     await interaction.deferUpdate().catch(() => {});
 
-    const fake = {
+    const base = {
       key: {
         remoteJid: channelJid(interaction.channel),
         fromMe: false,
         id: interaction.message.id,
         participant: interaction.guild ? userToJid(interaction.user.id) : undefined
       },
-      message: {
-        buttonsResponseMessage: {
-          selectedButtonId: interaction.customId,
-          selectedDisplayText: interaction.component?.label || ""
-        }
-      },
       pushName: interaction.member?.displayName || interaction.user.username,
       realJid: userToJid(interaction.user.id),
       _discord: { interaction, client }
     };
 
-    conn.ev.emit("messages.upsert", { messages: [fake], type: "notify" });
+    if (esMenu) {
+      // Los desplegables se traducen a `listResponseMessage`, que es la
+      // forma que ya interpretaban los plugins de descarga.
+      const selected = interaction.values?.[0] || "";
+      const opcion = interaction.component?.options?.find((o) => o.value === selected);
+
+      base.message = {
+        listResponseMessage: {
+          title: opcion?.label || "",
+          singleSelectReply: { selectedRowId: selected }
+        },
+        // Referencia al mensaje del menú, que los plugins usan para
+        // localizar la descarga pendiente.
+        extendedTextMessage: {
+          text: selected,
+          contextInfo: { stanzaId: interaction.message.id }
+        }
+      };
+    } else {
+      base.message = {
+        buttonsResponseMessage: {
+          selectedButtonId: interaction.customId,
+          selectedDisplayText: interaction.component?.label || ""
+        },
+        extendedTextMessage: {
+          text: interaction.customId,
+          contextInfo: { stanzaId: interaction.message.id }
+        }
+      };
+    }
+
+    conn.ev.emit("messages.upsert", { messages: [base], type: "notify" });
   } catch (e) {
     console.error("⚠️ Interacción:", e?.message);
   }
