@@ -83,6 +83,36 @@ En la misma pestaña **Bot**, baja hasta **Privileged Gateway Intents** y activa
 
 </div>
 
+> [!TIP]
+> **Si vienes de WhatsApp, esto cambia.** Allí añadías el número del bot a cada grupo, uno por uno.
+> En Discord **el bot se invita al servidor completo, una sola vez**, y a partir de ahí funciona
+> automáticamente en **todos los canales** donde pueda ver y escribir. No hay que agregarlo canal por canal.
+
+### 🚀 Forma rápida (recomendada)
+
+**1.** Copia tu **Application ID** en el [Developer Portal](https://discord.com/developers/applications) → tu aplicación → *General Information*
+
+**2.** Pega este enlace en el navegador cambiando `TU_APP_ID` por ese número:
+
+```
+https://discord.com/oauth2/authorize?client_id=TU_APP_ID&permissions=8&scope=bot+applications.commands
+```
+
+**3.** Elige tu servidor → **Autorizar** → completa el captcha
+
+✅ El bot aparecerá en la lista de miembros y ya responderá a `.menu`
+
+<div align="center">
+
+| Enlace | Permisos que concede |
+|:--|:--|
+| `permissions=8` | **Administrador** — todo funciona sin ajustes. Lo más cómodo. |
+| `permissions=1374658358359` | Sólo lo estrictamente necesario (ver la tabla de abajo). |
+
+</div>
+
+### 🛠️ Forma manual (OAuth2 → URL Generator)
+
 En **OAuth2 → URL Generator** marca:
 
 - **Scopes:** `bot` y `applications.commands`
@@ -117,6 +147,42 @@ En **OAuth2 → URL Generator** marca:
 
 > [!IMPORTANT]
 > Coloca el **rol del bot por encima** de los roles que deba moderar. Discord impide actuar sobre miembros con un rol igual o superior, por muchos permisos que tenga.
+>
+> Ajustes del servidor → **Roles** → arrastra el rol del bot hacia arriba.
+
+<details>
+<summary><b>🩹 Problemas al invitar — haz clic para desplegar</b></summary>
+
+<br/>
+
+**No me deja elegir servidor / no aparece la lista**
+
+Sólo puedes invitar el bot a servidores donde tengas el permiso **Gestionar servidor**.
+Si el servidor es de otra persona, tiene que abrir *ella* tu enlace de invitación.
+
+**El enlace dice «Bot requires code grant» o da error**
+
+Developer Portal → **Bot** → desactiva *Requires OAuth2 Code Grant*.
+
+**Quiero que otras personas puedan invitarlo**
+
+Developer Portal → **Bot** → activa **Public Bot**.
+Si lo dejas desactivado, sólo el dueño de la aplicación puede invitarlo.
+
+**Ya está en el servidor pero no responde**
+
+1. Comprueba que ve el canal: clic derecho en el canal → *Editar canal* → **Permisos**
+2. Revisa que los tres **Intents** estén activados (paso 2)
+3. Prueba con `.ping` — si responde, el bot está bien y es cuestión de permisos del canal
+
+</details>
+
+### 🎯 Limitar el bot a ciertos canales
+
+Como el bot entra al servidor entero, si sólo lo quieres en algunos canales:
+
+- **Ocultarlo de un canal:** clic derecho en el canal → *Editar canal* → **Permisos** → quítale `Ver canal` al rol del bot
+- **Apagarlo desde Discord:** escribe `.apagado on` en ese canal (y `.apagado off` para reactivarlo)
 
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
 
@@ -470,6 +536,17 @@ npm install
 <br/>
 
 **No.** El token de Discord es lo único obligatorio. Las APIs de descargas e IA vienen ya configuradas.
+
+</details>
+
+<details>
+<summary><b>¿Cómo agrego el bot a mis canales?</b></summary>
+
+<br/>
+
+**No se agrega por canales.** A diferencia de WhatsApp —donde metías el número del bot en cada grupo—, en Discord el bot se invita **una sola vez al servidor** y ya funciona en todos los canales donde tenga permiso para ver y escribir.
+
+Usa el enlace del **Paso 3**, elige tu servidor y autoriza. Después, si quieres que no aparezca en algún canal concreto, quítale el permiso `Ver canal` en ese canal o escribe `.apagado on` dentro de él.
 
 </details>
 
