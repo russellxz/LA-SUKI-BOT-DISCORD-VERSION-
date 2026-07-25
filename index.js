@@ -34,6 +34,7 @@ import {
 import { runAutoResponses } from "./core/autoresponse.js";
 import { showBanner, typeLine, spinner, progressBar, gradient, box, rule } from "./core/ui.js";
 import { resolveToken, retryAfterInvalidToken } from "./core/token.js";
+import { generateCode, claimPanelLines } from "./core/ownerclaim.js";
 import "./config.js";
 
 /* ─────────────────────────────── Arranque ─────────────────────────────── */
@@ -204,6 +205,11 @@ client.once("clientReady", async () => {
     }
   }
   sys.stop("⚙️", `${backgroundSystems.length} sistemas de fondo activos`);
+
+  // 👑 Código para reclamar la propiedad del bot desde Discord.
+  generateCode();
+  box("👑  RECLAMAR PROPIEDAD", claimPanelLines(global.prefixes[0]), chalk.magenta);
+
   rule();
 
   // Aviso de reinicio pendiente (comando .carga / .rest).
@@ -359,7 +365,11 @@ client.on("messageCreate", async (message) => {
     if (!plugin) return;
 
     // 5️⃣ Filtros de acceso (modo privado, apagado, admins, baneados).
-    if (!runGates(ctx)) return;
+    //    `soyowner` queda exento: es el comando con el que el dueño se
+    //    registra, y aún no es owner cuando lo ejecuta. Si el modo privado
+    //    estuviera activo, quedaría bloqueado para siempre.
+    const EXENTOS = new Set(["soyowner", "claimowner"]);
+    if (!EXENTOS.has(command) && !runGates(ctx)) return;
 
     // 6️⃣ Ejecutar — misma firma que en el bot de WhatsApp.
     //    Se añaden `usedPrefix` y `prefix`, que varios plugins usan para

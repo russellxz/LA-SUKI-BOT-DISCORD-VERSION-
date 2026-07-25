@@ -257,7 +257,43 @@ OWNER_ID=123456789012345678
 
 ### 👑 Propietarios del bot
 
-Los owners se definen en **`owner.json`**, con el **mismo formato de siempre** — ahora con IDs de Discord:
+<div align="center">
+
+**La forma más fácil: reclamarlo desde Discord** 🔐
+
+</div>
+
+Cuando el bot se conecta, muestra en la **consola del panel** un recuadro con un código:
+
+```
+╭─ 👑  RECLAMAR PROPIEDAD ──────────────────────────────╮
+│ ¿Aún no eres propietario del bot?                     │
+│                                                       │
+│ Escribe esto en cualquier canal de Discord:           │
+│                                                       │
+│    .soyowner A7K9M2XP                                 │
+│                                                       │
+│ Te registrará como owner al instante.                 │
+╰───────────────────────────────────────────────────────╯
+```
+
+Copia ese comando, pégalo en cualquier canal y **ya eres owner**. No hace falta buscar tu ID ni editar archivos.
+
+> [!NOTE]
+> El código **cambia cada vez que reinicias** el bot y **se consume al usarse** (se genera otro para el siguiente propietario). Como sólo aparece en la consola, únicamente quien tiene acceso al panel puede reclamarlo.
+
+<details>
+<summary><b>🔧 Métodos alternativos</b></summary>
+
+<br/>
+
+**Opción B · Variable de entorno**
+
+```env
+OWNER_ID=123456789012345678
+```
+
+**Opción C · Editar `owner.json`** (mismo formato de siempre, ahora con IDs de Discord)
 
 ```json
 [
@@ -266,7 +302,9 @@ Los owners se definen en **`owner.json`**, con el **mismo formato de siempre** �
 ]
 ```
 
-> **¿Cómo obtengo mi ID?** Ajustes de Discord → **Avanzado** → activa **Modo desarrollador**. Después, clic derecho sobre tu nombre → **Copiar ID de usuario**.
+**¿Cómo obtengo mi ID?** Ajustes de Discord → **Avanzado** → activa **Modo desarrollador**. Después, clic derecho sobre tu nombre → **Copiar ID de usuario**.
+
+</details>
 
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
 
