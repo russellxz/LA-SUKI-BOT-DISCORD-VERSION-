@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import ffmpeg from 'fluent-ffmpeg';
 import { promisify } from 'util';
+import { mediaEmbed, COLORS } from '../../core/embeds.js';
 import { pipeline } from 'stream';
 const streamPipe = promisify(pipeline);
 
@@ -354,52 +355,20 @@ const handler = async (msg, { conn, text }) => {
 
   const usarBotones = botonesActivos() && !esIphone(msg);
 
+  // 🎨 En Discord el desplegable ya se explica solo, así que basta con la
+  //    ficha de la canción. El tutorial largo sólo se muestra cuando no hay
+  //    componentes disponibles y hay que usar reacciones o números.
   const caption = usarBotones
-    ? `
-╭━━━━━━━━━━━━━━━━╮
-   ❦ 𝑳𝑨 𝑺𝑼𝑲𝑰 𝑩𝑶𝑻 ❦
-╰━━━━━━━━━━━━━━━━╯
-
-━━━━━━━━━━━━━━━━━
- *📥 CÓMO DESCARGAR*
-━━━━━━━━━━━━━━━━━━
-
-🟢 *OPCIÓN 1 — Menú de Botones*
-Toca el botón *📥 Menú de descarga* abajo del mensaje. Se abrirá una lista con todas las opciones de audio y video en distintas calidades.
-
-━━━━━━━━━━━━━━━━━
-🤖 *La Suki Bot*
-━━━━━━━━━━━━━━━━━
-`.trim()
+    ? "Elige el formato en el menú de abajo 👇"
     : `
-╭━━━━━━━━━━━━━━━━╮
-   ❦ 𝑳𝑨 𝑺𝑼𝑲𝑰 𝑩𝑶𝑻 ❦
-╰━━━━━━━━━━━━━━━━╯
+📥 **Cómo descargar**
 
-━━━━━━━━━━━━━━━━━
- *📥 CÓMO DESCARGAR*
-━━━━━━━━━━━━━━━━━
+Reacciona a este mensaje:
+👍 Audio MP3  ·  ❤️ Video (${qualityLabel})
+📄 Audio en documento  ·  📁 Video en documento
 
-🟡 *OPCIÓN 1 — Reaccionar*
-Reacciona con un emoji:
-   👍  →  Audio MP3
-   ❤️  →  Video (${qualityLabel})
-   📄  →  Audio como documento
-   📁  →  Video como documento
-
-🔵 *OPCIÓN 2 — Responder número*
-Cita este mensaje y escribe:
-   *1* o *audio*      →  Audio MP3
-   *2* o *video*      →  Video (${qualityLabel})
-   *3* o *videodoc*   →  Video como documento
-   *4* o *audiodoc*   →  Audio como documento
-
-💡 *Tip:* Puedes cambiar la calidad escribiendo:
-   _"video 720"_   o   _"2 1080"_   o   _"videodoc 4k"_
-
-━━━━━━━━━━━━━━━
-🤖 *La Suki Bot*
-━━━━━━━━━━━━━━━
+O responde con: \`1\` audio · \`2\` video · \`3\` videodoc · \`4\` audiodoc
+💡 Puedes fijar la calidad: \`video 720\` · \`2 1080\` · \`videodoc 4k\`
 `.trim();
 
   const nativeFlowButtons = [
@@ -454,40 +423,40 @@ Cita este mensaje y escribe:
     }
   ];
 
+  // 🎨 Una sola tarjeta con carátula, datos y menú, en lugar de mandar la
+  //    imagen por un lado y un muro de texto por otro.
+  const ficha = mediaEmbed({
+    title,
+    url: videoUrl,
+    thumbnail,
+    author: authorName,
+    duration,
+    views: viewsFmt,
+    extra: caption,
+    color: COLORS.video
+  }).setFooter({ text: "La Suki Bot · YouTube" });
+
   let preview;
 
   if (usarBotones) {
     try {
       preview = await conn.sendMessage(
         msg.key.remoteJid,
-        {
-          image: { url: thumbnail },
-          caption,
-          footer: "❦ Selecciona una opción del menú ❦",
-          buttons: nativeFlowButtons,
-          headerType: 4
-        },
+        { embeds: [ficha], buttons: nativeFlowButtons },
         { quoted: msg }
       );
     } catch (e) {
       console.log("[play] menú nativo falló, usando fallback:", e.message);
-
       preview = await conn.sendMessage(
         msg.key.remoteJid,
-        {
-          image: { url: thumbnail },
-          caption
-        },
+        { embeds: [ficha] },
         { quoted: msg }
       );
     }
   } else {
     preview = await conn.sendMessage(
       msg.key.remoteJid,
-      {
-        image: { url: thumbnail },
-        caption
-      },
+      { embeds: [ficha] },
       { quoted: msg }
     );
   }
@@ -934,43 +903,17 @@ async function downloadAudio(conn, job, asDocument, quoted) {
     return;
   }
 
-  const finalCaption =
-`╭━━━━━━━━━━━━━━━━━━╮
-   🎵 𝗔𝗨𝗗𝗜𝗢 𝗗𝗘𝗦𝗖𝗔𝗥𝗚𝗔𝗗𝗢
-╰━━━━━━━━━━━━━━━━━━╯
-
-📝 *Título:* ${title}
-👤 *Autor:* ${authorName}
-⏱️ *Duración:* ${duration}
-👁️ *Vistas:* ${viewsFmt}
-📦 *Formato:* ${asDocument ? "Documento MP3" : "Audio MP3"}
-💾 *Tamaño:* ${sizeMB.toFixed(2)} MB
-
-━━━━━━━━━━━━━━━━━━━━
-🤖 *Bot:* La Suki Bot
-🔗 *API:* Neoxr API
-━━━━━━━━━━━━━━━━━━━━`;
-
+  // 🎨 La ficha completa ya se mostró al elegir el formato: aquí sólo va el
+  //    archivo, sin repetir toda la información otra vez.
   await conn.sendMessage(
     chatId,
     {
       [asDocument ? "document" : "audio"]: fs.readFileSync(outFile),
       mimetype: "audio/mpeg",
-      fileName: `${base}.mp3`,
-      caption: asDocument ? finalCaption : undefined
+      fileName: `${base}.mp3`
     },
     { quoted }
   );
-
-  if (!asDocument) {
-    await conn.sendMessage(
-      chatId,
-      {
-        text: finalCaption
-      },
-      { quoted }
-    );
-  }
 
   try {
     fs.unlinkSync(outFile);
@@ -1039,31 +982,13 @@ async function downloadVideo(conn, job, asDocument, quoted) {
 
   const qualityLabel = q === "4k" ? "4K" : `${q}p`;
 
-  const finalCaption =
-`╭━━━━━━━━━━━━━━╮
-   🎬 𝗩𝗜𝗗𝗘𝗢 𝗗𝗘𝗦𝗖𝗔𝗥𝗚𝗔𝗗𝗢
-╰━━━━━━━━━━━━━━━╯
-
-📝 *Título:* ${title}
-👤 *Autor:* ${authorName}
-⏱️ *Duración:* ${duration}
-👁️ *Vistas:* ${viewsFmt}
-⚡ *Calidad:* ${qualityLabel}
-📦 *Formato:* ${asDocument ? "Documento MP4" : "Video MP4"}
-💾 *Tamaño:* ${sizeMB.toFixed(2)} MB
-
-━━━━━━━━━━━━━━━━━━
-🤖 *Bot:* La Suki Bot
-🔗 *API:* ${API_BASE}
-━━━━━━━━━━━━━━━━━━`;
-
+  // 🎨 Sólo el archivo: la ficha ya se mostró al elegir el formato.
   await conn.sendMessage(
     chatId,
     {
       [asDocument ? "document" : "video"]: fs.readFileSync(file),
       mimetype: "video/mp4",
-      fileName: `${base}_${tag}.mp4`,
-      caption: finalCaption
+      fileName: `${base}_${tag}.mp4`
     },
     { quoted }
   );

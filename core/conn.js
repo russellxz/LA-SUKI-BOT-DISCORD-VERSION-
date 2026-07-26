@@ -40,6 +40,7 @@ import {
   oversizeMessage,
   getUploadLimit
 } from "./media.js";
+import { waToDiscord, shouldEmbed, textToEmbed, COLORS } from "./embeds.js";
 
 /** Límites duros documentados por Discord. */
 export const LIMITS = {
@@ -262,10 +263,26 @@ export function createConn(client, options = {}) {
     return rows;
   }
 
-  /** Envía uno o varios mensajes de texto respetando el límite de 2.000. */
+  /**
+   * Envía texto con la presentación de Discord.
+   *
+   * Los mensajes largos y estructurados —menús, fichas, listas— se muestran
+   * como embed con la barra de color de la marca; el resto va como texto
+   * normal. En ambos casos se traduce el formato de WhatsApp (`*negrita*`)
+   * al de Discord, que si no se vería en cursiva.
+   *
+   * Los mensajes con menciones nunca se convierten en embed: dentro de un
+   * embed las menciones no avisan a nadie.
+   */
   async function sendText(channel, text, payload = {}) {
     const rendered = renderMentions(text);
-    const parts = chunkText(rendered);
+
+    if (shouldEmbed(rendered)) {
+      const embed = textToEmbed(rendered);
+      return rememberMessage(await channel.send({ embeds: [embed], ...payload }));
+    }
+
+    const parts = chunkText(waToDiscord(rendered));
     let last = null;
     let anchor = null;
 
