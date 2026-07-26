@@ -102,10 +102,78 @@ async function safeKick(member, reason) {
  * detenerlo. El handler los ejecuta en el mismo orden que el bot original.
  */
 
-/** 🔐 Modo privado global: sólo responde al owner. */
+/**
+ * 🔒 Filtro de mensajes directos + modo privado global.
+ *
+ * Réplica exacta del comportamiento del bot de WhatsApp:
+ *
+ *   · Por mensaje directo el bot **nunca** atiende a desconocidos, esté el
+ *     modo privado encendido o apagado. Sólo responde al owner y a quien
+ *     esté en la lista blanca (`.addlista`).
+ *   · Dentro de un servidor atiende a todos, salvo que el modo privado esté
+ *     activo, en cuyo caso sólo responde al owner.
+ */
 export function gatePrivateMode(ctx) {
+  const enLista = isInWhitelist(ctx.userId);
+
+  // ── Mensajes directos ──────────────────────────────────────────
+  if (!ctx.isGroup) {
+    return ctx.isOwner || ctx.fromMe || enLista;
+  }
+
+  // ── Dentro de un servidor ──────────────────────────────────────
   if (!isOn("global", "modoprivado")) return true;
-  return ctx.isOwner;
+  return ctx.isOwner || ctx.fromMe;
+}
+
+/**
+ * Lista blanca del privado (`setwelcome.json → lista`).
+ * `.addlista` guarda JIDs, así que comparamos sólo por dígitos.
+ */
+export function isInWhitelist(userId) {
+  try {
+    const id = digits(userId);
+    if (!id) return false;
+    const lista = readStore().lista;
+    if (!Array.isArray(lista)) return false;
+    return lista.some((entry) => digits(entry) === id);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 🚫 Comandos restringidos por canal (`.re` / `.unre`).
+ *
+ * Se conserva la escalada de avisos del bot original: los dos primeros
+ * intentos reciben una advertencia, el tercero un aviso final y a partir
+ * del cuarto se ignora al usuario en silencio, para no darle carrete.
+ */
+const restrictAttempts = new Map();
+
+export function gateRestricted(ctx, command) {
+  if (!ctx.isGroup || ctx.isOwner || ctx.fromMe) return true;
+
+  const lista = readStore()[ctx.chatId]?.restringidos;
+  if (!Array.isArray(lista) || !lista.includes(command)) return true;
+
+  const key = `${ctx.chatId}:${ctx.userId}:${command}`;
+  const intentos = (restrictAttempts.get(key) || 0) + 1;
+  restrictAttempts.set(key, intentos);
+
+  if (intentos <= 2) {
+    ctx.conn.sendMessage(ctx.chatId, {
+      text: `🚫 El comando *${command}* está restringido en este canal.`
+    }, { quoted: ctx.m }).catch(() => {});
+  } else if (intentos === 3) {
+    ctx.conn.sendMessage(ctx.chatId, {
+      text: `⚠️ <@${ctx.userId}> este es tu intento *3* con *${command}*.\n` +
+            "Si insistes una vez más, dejaré de responderte."
+    }).catch(() => {});
+  }
+  // A partir del cuarto intento: silencio absoluto.
+
+  return false;
 }
 
 /** 💤 Apagado por canal: sólo el owner puede reactivarlo. */
@@ -120,14 +188,57 @@ export function gateAdminMode(ctx) {
   return ctx.isAdmin || ctx.isOwner || ctx.fromMe;
 }
 
-/** 🔇 Usuarios muteados: se les borra el mensaje al instante. */
+/**
+ * 🔇 Usuarios muteados.
+ *
+ * Se conserva la escalada del bot de WhatsApp: siempre se borra el mensaje,
+ * y según cuántos lleve enviados se le avisa y finalmente se le expulsa.
+ *
+ *   ·  8 mensajes → aviso de que podría ser expulsado
+ *   · 13 mensajes → aviso final
+ *   · 15 mensajes → expulsión (a los administradores sólo se les avisa)
+ *
+ * El contador vive en memoria, igual que en el original: se reinicia al
+ * reiniciar el bot.
+ */
+const muteCounter = new Map();
+
 export async function gateMuted(ctx) {
   if (!ctx.isGroup || ctx.isOwner) return true;
+
   const store = readStore();
   const muted = store[ctx.chatId]?.muted;
   if (!Array.isArray(muted) || !muted.length) return true;
   if (!muted.map(digits).includes(ctx.userId)) return true;
+
+  // El mensaje se borra siempre.
   await safeDelete(ctx.message);
+
+  const key = `${ctx.chatId}:${ctx.userId}`;
+  const total = (muteCounter.get(key) || 0) + 1;
+  muteCounter.set(key, total);
+
+  const aviso = (text) => ctx.conn.sendMessage(ctx.chatId, { text }).catch(() => {});
+
+  if (total === 8) {
+    await aviso(`🔇 <@${ctx.userId}> estás silenciado. Si sigues escribiendo podrías ser expulsado.`);
+  } else if (total === 13) {
+    await aviso(`⛔ <@${ctx.userId}> estás al límite. Un mensaje más y te expulso.`);
+  } else if (total >= 15) {
+    if (ctx.isAdmin) {
+      // A los administradores no se les expulsa: se avisa cada 10 mensajes.
+      if (total % 10 === 0) {
+        await aviso(`⚠️ <@${ctx.userId}> está silenciado pero no puedo expulsarlo por su rango.`);
+      }
+    } else {
+      const kicked = await safeKick(ctx.member, "Silenciado reincidente");
+      if (kicked) {
+        muteCounter.delete(key);
+        await aviso(`🚫 <@${ctx.userId}> fue expulsado por seguir escribiendo estando silenciado.`);
+      }
+    }
+  }
+
   return false;
 }
 
@@ -145,11 +256,50 @@ export function gateBanned(ctx) {
 const LINK_PATTERN = /(https?:\/\/|www\.)\S+|discord\.gg\/\S+|\b[\w-]+\.(com|net|org|io|gg|xyz|me|tv|link)\b/i;
 const INVITE_PATTERN = /(discord\.(gg|io|me|li)|discord(app)?\.com\/invite)\/\S+/i;
 
+/* ───────────────────── Advertencias (advertencias.json) ───────────────── */
+
+const WARN_FILE = path.resolve("./advertencias.json");
+
+function readWarns() {
+  try {
+    if (!fs.existsSync(WARN_FILE)) return {};
+    return JSON.parse(fs.readFileSync(WARN_FILE, "utf-8") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeWarns(data) {
+  try { fs.writeFileSync(WARN_FILE, JSON.stringify(data, null, 2)); } catch {}
+}
+
+/** Suma una advertencia y devuelve el total acumulado. */
+function addWarn(chatId, userId) {
+  const data = readWarns();
+  data[chatId] = data[chatId] || {};
+  data[chatId][userId] = (data[chatId][userId] || 0) + 1;
+  writeWarns(data);
+  return data[chatId][userId];
+}
+
+/** Pone el contador a cero (tras expulsar, igual que en WhatsApp). */
+function resetWarn(chatId, userId) {
+  const data = readWarns();
+  if (data[chatId]) {
+    delete data[chatId][userId];
+    writeWarns(data);
+  }
+}
+
 /**
- * 🔗 Antilink — borra el mensaje y expulsa al autor (igual que en WhatsApp).
- * `linkall` es la variante estricta: bloquea cualquier enlace.
- * `antilink` bloquea sólo invitaciones a otros servidores, que es el
- * equivalente natural en Discord de los enlaces a otros grupos.
+ * 🔗 Antilink y linkall, con el mismo sistema de avisos del bot original.
+ *
+ *   · `.antilink` → invitaciones a otros servidores · expulsa al aviso 3
+ *   · `.linkall`  → cualquier enlace                · expulsa al aviso 10
+ *
+ * Antes se expulsaba al primer enlace, que no era el comportamiento del bot
+ * de WhatsApp. Ahora se borra el mensaje, se avisa y sólo se expulsa al
+ * alcanzar el límite; entonces el contador vuelve a cero.
  */
 export async function guardLinks(ctx) {
   if (!ctx.isGroup || ctx.isAdmin || ctx.isOwner || ctx.fromMe) return true;
@@ -159,17 +309,33 @@ export async function guardLinks(ctx) {
   if (!strict && !basic) return true;
 
   const text = ctx.text || "";
+
+  // `linkall` es más amplio: cualquier enlace, no sólo invitaciones.
   const matched = strict ? LINK_PATTERN.test(text) : INVITE_PATTERN.test(text);
   if (!matched) return true;
 
   await safeDelete(ctx.message);
-  const kicked = await safeKick(ctx.member, "Antilink");
 
-  await ctx.conn.sendMessage(ctx.chatId, {
-    text: kicked
-      ? `🚫 <@${ctx.userId}> fue expulsado por enviar enlaces no permitidos.`
-      : `🚫 <@${ctx.userId}>, los enlaces no están permitidos aquí.`
-  });
+  const limite = strict ? 10 : 3;
+  const avisos = addWarn(ctx.chatId, ctx.userId);
+
+  if (avisos >= limite) {
+    const kicked = await safeKick(ctx.member, strict ? "Linkall" : "Antilink");
+    resetWarn(ctx.chatId, ctx.userId);
+
+    await ctx.conn.sendMessage(ctx.chatId, {
+      text: kicked
+        ? `🚫 <@${ctx.userId}> fue expulsado tras *${limite}* advertencias por enlaces.`
+        : `⚠️ <@${ctx.userId}> llegó al límite de advertencias, pero no puedo expulsarlo ` +
+          "(su rol está por encima del mío)."
+    });
+  } else {
+    await ctx.conn.sendMessage(ctx.chatId, {
+      text: `🔗 <@${ctx.userId}>, aquí no se permiten enlaces.\n` +
+            `⚠️ Advertencia *${avisos}* de *${limite}*.`
+    });
+  }
+
   return false;
 }
 

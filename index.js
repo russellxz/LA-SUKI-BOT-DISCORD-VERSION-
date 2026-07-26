@@ -29,8 +29,25 @@ import { channelJid, userToJid, jidToId, digits } from "./core/ids.js";
 import {
   runGuards, runGates, countMessage, rememberForAntidelete,
   handleDeletedMessage, handleMemberJoin, handleMemberLeave,
-  isGuildAdmin, isOwnerId, readStore
+  isGuildAdmin, isOwnerId, readStore, gateRestricted, isInWhitelist
 } from "./core/systems.js";
+import { applyStickerCommand } from "./core/stickercmd.js";
+
+/**
+ * Comandos que se atienden siempre, incluso a quien todavía no es
+ * propietario ni está en la lista blanca. Sin esta excepción, el dueño no
+ * podría registrarse por mensaje directo.
+ */
+const COMANDOS_LIBRES = new Set(["soyowner", "claimowner"]);
+
+/** Extrae el nombre del comando de un texto, si lleva prefijo. */
+function parseCommand(text) {
+  const prefix = global.prefixes.find((p) => text.startsWith(p));
+  if (!prefix) return { prefix: null, command: "", rest: "" };
+  const body = text.slice(prefix.length).trim();
+  const command = body.split(/\s+/)[0]?.toLowerCase() || "";
+  return { prefix, command, rest: body.slice(command.length).trim() };
+}
 import { runAutoResponses } from "./core/autoresponse.js";
 import { showBanner, typeLine, spinner, progressBar, gradient, box, rule } from "./core/ui.js";
 import { resolveToken, retryAfterInvalidToken } from "./core/token.js";
@@ -351,7 +368,11 @@ client.on("messageCreate", async (message) => {
     const isGroup = Boolean(message.guild);
     const userId = message.author.id;
 
-    const text = message.content || "";
+    // 🎯 Sticker asociado a un comando (`.addco`): se inyecta el texto del
+    //    comando en el mensaje para que siga el flujo normal, igual que en
+    //    el bot de WhatsApp.
+    const stickerCmd = applyStickerCommand(m);
+    const text = stickerCmd || message.content || "";
 
     const ctx = {
       m, conn, message, text, chatId, userId,
@@ -363,6 +384,17 @@ client.on("messageCreate", async (message) => {
       isAdmin: isGroup ? isGuildAdmin(message.member) : false,
       isOwner: isOwnerId(userId)
     };
+
+    const parsed = parseCommand(text);
+
+    // 🔒 Mensajes directos: el bot sólo atiende al owner y a quien esté en
+    //    la lista blanca (`.addlista`), igual que el bot de WhatsApp. A los
+    //    desconocidos los ignora por completo, ni siquiera con respuestas
+    //    automáticas. Se exceptúa el comando para reclamar la propiedad.
+    if (!isGroup && !ctx.isOwner && !isInWhitelist(userId)
+        && !COMANDOS_LIBRES.has(parsed.command)) {
+      return;
+    }
 
     // Los plugins con flujos interactivos escuchan este evento.
     conn.ev.emit("messages.upsert", { messages: [m], type: "notify" });
@@ -377,29 +409,27 @@ client.on("messageCreate", async (message) => {
     countMessage(ctx);
 
     // 4️⃣ ¿Lleva prefijo? Si no, pasa por las respuestas automáticas.
-    const prefix = global.prefixes.find((p) => text.startsWith(p));
-    if (!prefix) {
+    const { prefix, command, rest: rawArgs } = parsed;
+    if (!prefix || !command) {
       await runAutoResponses(ctx);
       return;
     }
 
-    const body = text.slice(prefix.length).trim();
-    if (!body) return;
-
-    const command = body.split(/\s+/)[0].toLowerCase();
-    const rawArgs = body.slice(command.length).trim();
     const args = rawArgs.length ? rawArgs.split(/\s+/) : [];
 
     const plugin = global.pluginIndex.get(command)
       || global.plugins.find((p) => p?.command?.includes?.(command));
     if (!plugin) return;
 
-    // 5️⃣ Filtros de acceso (modo privado, apagado, admins, baneados).
+    // 5️⃣ Filtros de acceso (privado + lista blanca, apagado, admins, baneados).
     //    `soyowner` queda exento: es el comando con el que el dueño se
     //    registra, y aún no es owner cuando lo ejecuta. Si el modo privado
     //    estuviera activo, quedaría bloqueado para siempre.
-    const EXENTOS = new Set(["soyowner", "claimowner"]);
-    if (!EXENTOS.has(command) && !runGates(ctx)) return;
+    if (!COMANDOS_LIBRES.has(command)) {
+      if (!runGates(ctx)) return;
+      // 5️⃣.b Comandos restringidos en este canal (`.re` / `.unre`).
+      if (!gateRestricted(ctx, command)) return;
+    }
 
     // 6️⃣ Ejecutar — misma firma que en el bot de WhatsApp.
     //    Se añaden `usedPrefix` y `prefix`, que varios plugins usan para
