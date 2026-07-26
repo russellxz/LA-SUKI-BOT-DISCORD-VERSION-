@@ -66,20 +66,46 @@ const normalize = (value = "") =>
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^\w]/g, "");
 
+/**
+ * Caché del álbum de multimedia.
+ *
+ * `guar.json` pesa varios megas (guarda los archivos en base64) y antes se
+ * volvía a leer y parsear entero con CADA mensaje que llegaba, lo que en un
+ * servidor con movimiento es un gasto enorme. Ahora se guarda en memoria y
+ * sólo se relee cuando cambia la fecha de modificación de los ficheros, así
+ * que `.guar` y `.del` siguen surtiendo efecto al instante.
+ */
+let mediaCache = null;
+let mediaStamp = "";
+
+function fileStamp(file) {
+  try {
+    return fs.existsSync(file) ? String(fs.statSync(file).mtimeMs) : "0";
+  } catch {
+    return "0";
+  }
+}
+
 function loadSavedMedia() {
+  const guarPath = path.resolve("./guar.json");
+  const filesPath = path.resolve("./guar_files.json");
+  const stamp = `${fileStamp(guarPath)}:${fileStamp(filesPath)}`;
+
+  if (mediaCache && stamp === mediaStamp) return mediaCache;
+
   const data = {};
 
   // 1) Formato antiguo: base64 embebido en guar.json
   try {
-    const file = path.resolve("./guar.json");
-    if (fs.existsSync(file)) Object.assign(data, JSON.parse(fs.readFileSync(file, "utf-8")));
+    if (fs.existsSync(guarPath)) {
+      Object.assign(data, JSON.parse(fs.readFileSync(guarPath, "utf-8")));
+    }
   } catch {}
 
   // 2) Formato nuevo: rutas en guar_files.json (se combinan con el anterior)
   try {
-    const file = path.resolve("./guar_files.json");
-    if (fs.existsSync(file)) {
-      const files = JSON.parse(fs.readFileSync(file, "utf-8"));
+    if (fs.existsSync(filesPath)) {
+      const files = JSON.parse(fs.readFileSync(filesPath, "utf-8"));
       for (const key of Object.keys(files)) {
         if (!Array.isArray(data[key])) data[key] = [];
         data[key] = data[key].concat(files[key]);
@@ -87,7 +113,23 @@ function loadSavedMedia() {
     }
   } catch {}
 
-  return data;
+  // Índice normalizado: evita recorrer y normalizar todas las claves en
+  // cada mensaje. Se construye una sola vez por recarga.
+  const index = new Map();
+  for (const key of Object.keys(data)) {
+    const clean = normalize(key);
+    if (clean) index.set(clean, data[key]);
+  }
+
+  mediaCache = { data, index };
+  mediaStamp = stamp;
+  return mediaCache;
+}
+
+/** Fuerza la recarga del álbum (lo usan `.guar` y `.del` tras escribir). */
+export function invalidateSavedMedia() {
+  mediaCache = null;
+  mediaStamp = "";
 }
 
 /** ¿Están activas las respuestas automáticas en este canal? */
@@ -110,17 +152,16 @@ export async function autoSavedMedia(ctx) {
   try {
     if (!reactionsEnabled(ctx.chatId)) return false;
 
-    const saved = loadSavedMedia();
-    if (!Object.keys(saved).length) return false;
+    const { index } = loadSavedMedia();
+    if (!index.size) return false;
 
     const clean = normalize(ctx.text);
     if (!clean) return false;
 
-    for (const key of Object.keys(saved)) {
-      if (normalize(key) !== clean) continue;
-      const items = saved[key];
-      if (!Array.isArray(items) || !items.length) continue;
-
+    // Búsqueda directa en el índice: antes se recorrían y normalizaban
+    // todas las claves del álbum en cada mensaje.
+    const items = index.get(clean);
+    if (Array.isArray(items) && items.length) {
       const item = items[Math.floor(Math.random() * items.length)];
 
       let buffer = null;

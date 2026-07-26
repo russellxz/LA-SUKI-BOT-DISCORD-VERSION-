@@ -27,6 +27,18 @@ function classify(attachment) {
   return "document";
 }
 
+/**
+ * Huella estable de un adjunto o sticker.
+ *
+ * En WhatsApp los stickers se identificaban por su `fileSha256`, y así es
+ * como `.addco` los asocia a un comando. En Discord no hay hash, pero los
+ * stickers tienen un ID permanente, así que lo usamos como equivalente:
+ * el plugin sigue leyendo `fileSha256.toString("base64")` sin cambios.
+ */
+function fingerprint(source, prefix) {
+  return Buffer.from(`${prefix}:${source}`);
+}
+
 /** Construye el nodo de medio con la forma que esperan los plugins. */
 function mediaNode(attachment, caption = "") {
   const kind = classify(attachment);
@@ -37,6 +49,8 @@ function mediaNode(attachment, caption = "") {
     fileLength: attachment.size,
     fileName: attachment.name,
     caption,
+    // Huella estable para `.addco` y para el álbum de multimedia.
+    fileSha256: fingerprint(`${attachment.name}|${attachment.size}`, "att"),
     // Referencia interna que usa `conn.downloadContentFromMessage`.
     _discordUrl: attachment.url
   };
@@ -48,9 +62,41 @@ function mediaNode(attachment, caption = "") {
   return { documentMessage: node };
 }
 
-/** Contenido `message` de un mensaje de Discord (texto o medio). */
+/**
+ * Nodo para los stickers nativos de Discord.
+ *
+ * Son la causa de que `.guar` no guardara stickers: en Discord **no viajan
+ * como adjuntos**, sino en su propia colección `message.stickers`, así que
+ * el código que sólo miraba `attachments` nunca los veía.
+ *
+ * Los stickers Lottie (formato 3) son animaciones vectoriales en JSON y no
+ * tienen imagen descargable; se marcan para poder avisar al usuario.
+ */
+function stickerNode(sticker) {
+  const lottie = sticker.format === 3 || sticker.format === "LOTTIE";
+  const animado = sticker.format === 2 || sticker.format === 4;
+  const ext = lottie ? "json" : (animado ? "gif" : "png");
+
+  return {
+    stickerMessage: {
+      url: sticker.url,
+      directPath: sticker.url,
+      mimetype: lottie ? "application/json" : (animado ? "image/gif" : "image/png"),
+      fileName: `${sticker.name || "sticker"}.${ext}`,
+      fileLength: 0,
+      isAnimated: animado,
+      isLottie: lottie,
+      fileSha256: fingerprint(sticker.id, "sticker"),
+      _discordUrl: sticker.url,
+      _discordSticker: sticker
+    }
+  };
+}
+
+/** Contenido `message` de un mensaje de Discord (texto, medio o sticker). */
 function buildContent(message, { quoted = null } = {}) {
   const text = message.content || "";
+  const sticker = message.stickers?.first?.() || null;
   const attachment = message.attachments?.first?.() || null;
   const mentionedJid = mentionsToJids(text);
 
@@ -65,6 +111,14 @@ function buildContent(message, { quoted = null } = {}) {
         }
       : {})
   };
+
+  // Los stickers nativos van primero: en Discord pueden llegar junto a
+  // texto y no aparecen entre los adjuntos.
+  if (sticker) {
+    const node = stickerNode(sticker);
+    node.stickerMessage.contextInfo = contextInfo;
+    return { content: node, contextInfo };
+  }
 
   if (attachment) {
     const node = mediaNode(attachment, text);

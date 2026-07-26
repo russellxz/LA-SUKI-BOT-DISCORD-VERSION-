@@ -49,9 +49,13 @@ export const jidToMention = (jid = "") => {
  * Reemplaza en un texto saliente las menciones estilo WhatsApp (`@123456`)
  * por menciones reales de Discord. Los plugins escriben `@${numero}` por
  * todos lados; así se renderizan correctamente sin tocarlos.
+ *
+ * La comprobación hacia atrás evita volver a envolver lo que ya es una
+ * mención de Discord: sin ella, `<@123>` acababa como `<<@123>>` y Discord
+ * lo mostraba como texto plano en vez de como mención.
  */
 export function renderMentions(text = "") {
-  return String(text).replace(/@(\d{5,25})\b/g, (match, id) => `<@${id}>`);
+  return String(text).replace(/(?<![<&])@(\d{5,25})\b/g, (match, id) => `<@${id}>`);
 }
 
 /**
